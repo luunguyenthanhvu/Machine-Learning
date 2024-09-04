@@ -23,3 +23,4 @@ mymodel = model.fit(x_train, y_train)
 
 X_New = np.array([[6.0 , 3.23, 4.6, 2.5]])
 print(mymodel.predict(X_New))
+print(mymodel.score(x_test, y_test))
