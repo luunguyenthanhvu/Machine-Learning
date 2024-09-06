@@ -1,0 +1,2 @@
+from .content_base_function import tfidf_matrix, cosine_similarity
+from utils.read_data import get_dataframe_anime_csv
