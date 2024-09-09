@@ -1,26 +1,23 @@
 import pandas as pd
-from sklearn.neighbors import NearestNeighbors
-from sklearn.feature_extraction.text import TfidfVectorizer
+from dask.array import indices
+
+from .content_base_function import tfidf_matrix, cosine_similarity
 from utils.read_data import get_dataframe_anime_csv
 
-
-class CB(object):
+class CB(object) :
   """
-  Khởi tạo data frame "animes" với hàm get_dataframe_anime_csv
+    Khởi tạo data frame "animes" với hàm get_dataframe_anime_csv
   """
 
   def __init__(self, anime_csv):
     self.anime = get_dataframe_anime_csv(anime_csv)
     self.tfidf_matrix = None
-    self.knn_model = None
+    self.cosine_similarity = None
 
   def build_model(self):
     self.anime['genre'] = self.anime['genre'].fillna("").astype('str')
     self.tfidf_matrix = tfidf_matrix(self.anime)
-
-    # Tạo mô hình KNN với metric cosine
-    self.knn_model = NearestNeighbors(metric='cosine', algorithm='brute')
-    self.knn_model.fit(self.tfidf_matrix)
+    self.cosine_similarity = cosine_similarity(self.tfidf_matrix)
 
   def refresh(self):
     self.build_model()
@@ -31,12 +28,13 @@ class CB(object):
   def genre_recommendations(self, name, top_x):
     """
     Xây dựng hàm trả về danh sách top anime tương đồng theo tên anime truyền vào:
-    + Tham số truyền vào gồm "name" là tên anime và "top_x" là top anime tương đồng cần lấy
+    + Tham số truyền vào gồm "name" là tên anime và "topX" là top anime tương đồng cần lấy
     + Tạo ra list "sim_score" là danh sách điểm tương đồng với anime truyền vào
     + Sắp xếp điểm tương đồng từ cao đến thấp
-    + Trả về top danh sách tương đồng cao nhất theo giá trị "top_x" truyền vào
+    + Trả về top danh sách tương đồng cao nhất theo giá trị "topX" truyền vào
     """
 
+    # Đảm bảo biến `name` không bị thay đổi
     names = self.anime["name"]
     indices = pd.Series(self.anime.index, index=self.anime["name"])
 
@@ -45,24 +43,18 @@ class CB(object):
     if idx is None:
       raise ValueError(f"Anime with name '{name}' not found")
 
-    # Dùng KNN để tìm các anime tương tự
-    distances, indices = self.knn_model.kneighbors(self.tfidf_matrix[idx],
-                                                   n_neighbors=top_x + 1)
+    # Tạo danh sách điểm tương đồng
+    sim_scores = list(enumerate(self.cosine_similarity[idx].tolist()))
 
-    # Trả về các kết quả: chỉ số anime và khoảng cách tương đồng
-    sim_scores = list(zip(indices.flatten(), distances.flatten()))
+    # Sắp xếp danh sách dựa trên điểm tương đồng
+    sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
 
-    # Bỏ qua anime hiện tại (idx) và trả về các anime tương tự nhất
-    sim_scores = sim_scores[1:]  # Bỏ qua anime đầu tiên vì đó là chính nó
+    # Bỏ qua điểm tương đồng với chính anime đó (self)
+    sim_scores = sim_scores[1:top_x + 1]
 
-    # Lấy các tên anime tương đồng
-    similar_animes = names.iloc[[i for i, _ in sim_scores]].values
+    # Lấy các chỉ số của anime tương đồng
+    anime_indices = [i[0] for i in sim_scores]
 
-    return sim_scores, similar_animes
+    # Trả về các kết quả
+    return sim_scores, names.iloc[anime_indices].values
 
-
-# Hàm xử lý TF-IDF
-def tfidf_matrix(animes):
-  tf = TfidfVectorizer(analyzer='word', ngram_range=(1, 1), min_df=0.01)
-  new_tfidf_matrix = tf.fit_transform(animes["genre"])
-  return new_tfidf_matrix
